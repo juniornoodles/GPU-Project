@@ -95,22 +95,22 @@ always_ff @ (posedge clk) begin
     if (start_w) begin
         wvalid <= 1'b1;
         wdata <= next_data;
-        if (first & wlast) begin
-            wstrb <= (16'hFFFF >> wstrb_shift_first)
-            & (16'hFFFF << wstrb_shift_last);
-        end else if (first) begin
-            wstrb <= (16'hFFFF >> wstrb_shift_first);
-        end else if (last) begin
-            wstrb <= (16'hFFFF << wstrb_shift_last);
-        end else begin
-            wstrb <= 16'hFFFF;
-        end
     end else begin
         wvalid <= 1'b0;
     end
 end
 
 always_comb begin
+    if (first & wlast) begin
+        wstrb = (16'hFFFF >> wstrb_shift_first)
+        & (16'hFFFF << wstrb_shift_last);
+    end else if (first) begin
+        wstrb = (16'hFFFF >> wstrb_shift_first);
+    end else if (last) begin
+        wstrb = (16'hFFFF << wstrb_shift_last);
+    end else begin
+        wstrb = 16'hFFFF;
+    end
     if (wvalid & wready & last) begin
         w_finished <= 1'b1;
     end else begin
