@@ -1,8 +1,21 @@
 module mmu (
 input logic clk,
 
+input logic [23:0] aw_packet,
+input logic aw_packet_valid,
+output logic next_aw_packet,
+
+input logic [48:0] w_packet,
+input logic w_packet_valid,
+output logic next_w_packet,
+
+input logic start_reads,
+
+output logic add_pixel_reads,
+output logic [127:0] pixel_reads,
 
 
+//AXI ports
 output logic awid, //hardcoded
 output logic [26:0] awaddr,
 output logic [7:0] awlen,
@@ -38,7 +51,7 @@ output logic rready,
 input logic rid, //unused
 input logic [127:0] rdata,
 input logic [1:0] rresp,
-input logic rlast, //unused
+input logic rlast,
 input logic rvalid
 
 );
@@ -53,74 +66,63 @@ assign awcache = 4'b0;
 assign awprot = 3'b0;
 assign awqos = 4'b0;
 
-logic start_aw;
-logic [11:0] next_waddr;
-logic [2:0] next_burst_length;
-logic aw_finished;
 
-always_ff @ (posedge clk) begin
-    if (start_aw) begin
-        awaddr <= {11'b0,next_waddr,4'b0};
-        awlen <= {5'b0,next_burst_length};
-        awvalid <= 1'b1;
-    end else begin
-        awvalid <= 1'b0;
-    end
-end
 
 always_comb begin
-    if (awvalid & awready) begin
-        aw_finished <= 1'b1;
-    end else begin
-        aw_finished <= 1'b0;
-    end
+    awaddr = {7'b0, aw_packet[18:3], 4'b0};
+    awlen = {3'b0, aw_packet[23:19]};
+    awvalid = aw_packet_valid;
+    next_aw_packet = awvalid & awready;
 end
 
 
 
 // Logic for w channel
-logic start_w;
-logic [3:0] wstrb_shift_first;
-logic [3:0] wstrb_shift_last;
-logic first;
-logic last;
-logic [2:0] num_bursts;
-logic [127:0] next_data;
-logic w_finished;
+logic [15:0] wstrb_shift_first;
+logic [15:0] wstrb_shift_last;
+logic first = 1'b1;
+logic [4:0] num_bursts;
+logic [4:0] burst_count = 5'b0;
 
-assign wlast = num_bursts == 1;
+
 
 
 always_ff @ (posedge clk) begin
-    if (start_w) begin
-        wvalid <= 1'b1;
-        wdata <= next_data;
-    end else begin
-        wvalid <= 1'b0;
+    if (next_w_packet) begin
+        burst_count <= 0;
+    end else if (wvalid & wready) begin
+        burst_count <= burst_count + 1;
+    end
+
+    if (next_w_packet) begin
+        first <= 1'b1;
+    end else if (first & wvalid & wready) begin
+        first <= 1'b0;
     end
 end
 
 always_comb begin
+    num_bursts = w_packet[16:12];
+    wlast = num_bursts == burst_count;
+    wvalid = w_packet_valid;
+    next_w_packet = wvalid & wready & wlast;
+    wstrb_shift_first = w_packet[32:17];
+    wstrb_shift_last = w_packet[48:33];
+    wdata = {8{4'b0,w_packet[11:0]}};
     if (first & wlast) begin
-        wstrb = (16'hFFFF >> wstrb_shift_first)
-        & (16'hFFFF << wstrb_shift_last);
+        wstrb = wstrb_shift_first & wstrb_shift_last;
     end else if (first) begin
-        wstrb = (16'hFFFF >> wstrb_shift_first);
-    end else if (last) begin
-        wstrb = (16'hFFFF << wstrb_shift_last);
+        wstrb = wstrb_shift_first;
+    end else if (wlast) begin
+        wstrb = wstrb_shift_last;
     end else begin
         wstrb = 16'hFFFF;
-    end
-    if (wvalid & wready & last) begin
-        w_finished <= 1'b1;
-    end else begin
-        w_finished <= 1'b0;
     end
 end
 
 // logic for b channel
 
-assign bresp = 1'b1;
+assign bready = 1'b1;
 
 // logic for ar channel
 
@@ -133,44 +135,39 @@ assign arcache = 4'b0;
 assign arprot = 3'b0;
 assign arqos = 4'b0;
 
-logic start_ar;
-logic ar_finished;
+logic [19:0] next_read_addr = 20'b0;
+logic adding_pixel_values = 1'b0;
 
-always_ff @ (posedge clk) begin
-    if (start_ar) begin
-        arvalid <= 1'b1;
+always_ff @ (posedge clk or posedge reset) begin
+    if (reset) begin
+       next_read_addr = 0; 
     end else begin
-        arvalid <= 1'b0;
+        if (arvalid & arready) begin
+            next_read_addr <= araddr == 20'd613120 ? 0 : next_read_addr + 1280; 
+        end
+        if (~adding_pixel_values) begin
+            arvalid <= start_reads;
+            adding_pixel_values <= start_reads;
+        end else begin
+            if (arvalid & arready) begin
+                arvalid <= 1'b0;
+            end
+            adding_pixel_values <= ~rlast;
+        end
     end
 end
 
 always_comb begin
-    if (arvalid & arready) begin
-        ar_finished <= 1'b1;
-    end else begin
-        ar_finished <= 1'b0;
-    end
+    araddr = {7'b0, next_read_addr};
 end
 
 // logic for r channel
 
-logic start_r;
-logic r_finished;
-
-always_ff @ (posedge clk) begin
-    if (start_r) begin
-        rready <= 1'b1;
-    end else begin
-        rready <= 1'b0;
-    end
-end
+assign rready = 1'b1;
+assign pixel_reads = rdata;
 
 always_comb begin
-    if (rvalid & rready) begin
-        r_finished <= 1'b1;
-    end else begin
-        r_finished <= 1'b0;
-    end
+    add_pixel_reads = rready & rvalid;
 end
 
 endmodule
