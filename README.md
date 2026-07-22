@@ -20,4 +20,4 @@ DRAW_SPRITE
 
 SWAP_BUFFER
 
-I've currently implemented the first 6 instructions and the pipeline for the cores to send the instructionsto the mig. This code relies on Custom IP blocks which I will add to the repository when the projectis completed. I am currently working on debugging issues with the first 6 instructions and then implementing the final two
+I've currently implemented the first 6 instructions and the pipeline for the cores to send the instructionsto the mig. This code relies on Custom IP blocks which I will add to the repository when the projectis completed. I am currently working on debugging issues with the first 6 instructions and then implementing the final two.
